@@ -1,10 +1,8 @@
-import { CrearUsuarioDto } from './dto/crear-usuario.dto';
-import { Controller, Post, Body, Query, BadRequestException, Get, Put, Req, Res } from '@nestjs/common';
+import { CrearUsuarioDto, LoginUsuarioDto, ActualizarUsuarioDto } from './dto';
+import {Controller, Post, Body, Query, Get, Put, Req, Res, Patch} from '@nestjs/common';
 import { ApiTags, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { UsuarioService } from './usuario.service';
 import { Usuario } from "../../framework/database/mysql/entities";
-import { LoginUsuarioDto } from './dto/login-usuario.dto';
-import { ActualizarUsuarioDto } from './dto/actualizar-usuario.dto';
 import { Auth } from './decorators/auth.decorator';
 import { RolesPermitidos } from './interfaces/roles-permitidos';
 
@@ -23,7 +21,18 @@ export class UsuarioController {
     registrarUsuario(@Body() crearUsuarioDto: CrearUsuarioDto) {
         return this.usuarioService.registrarUsuario(crearUsuarioDto);
     }
-
+    
+    
+    @ApiResponse({ status: 201, description: 'Sesión iniciada correctamente', type: Usuario })
+    @ApiResponse({ status: 400, description: 'Bad Request: Verifique los datos de entrada' })
+    @ApiResponse({ status: 401, description: 'Unauthorized: No tiene permisos para realizar esta acción' })
+    @ApiResponse({ status: 403, description: 'Forbidden: Verifique que el token de autenticación sea válido y que no halla expirado.' })
+    @ApiResponse({ status: 404, description: 'Not Found: El código de usuario no existe' })
+    @Post('iniciar_sesion')
+    iniciarSesion(@Body() iniciarSesionDto: LoginUsuarioDto) {
+        return this.usuarioService.iniciarSession(iniciarSesionDto);
+    }
+    
     @ApiResponse({ status: 201, description: 'Usuario registrado correctamente', type: Usuario })
     @ApiResponse({ status: 400, description: 'Bad Request: Verifique los datos de entrada' })
     @ApiResponse({ status: 401, description: 'Unauthorized: No tiene permisos para realizar esta acción' })
@@ -31,8 +40,22 @@ export class UsuarioController {
     @ApiResponse({ status: 404, description: 'Not Found: El código de usuario no existe' })
     @Post('register_admin')
     registrarAdmin(@Body() crearUsuarioDto: CrearUsuarioDto) {
-        return this.usuarioService.registrarAdmin(crearUsuarioDto);
+        return this.usuarioService.registrarUsuario(crearUsuarioDto, true);
     }
+    
+    @Auth()
+    @ApiResponse({ status: 201, description: 'Sesión cerrada correctamente', type: Usuario })
+    @ApiResponse({ status: 400, description: 'Bad Request: Verifique los datos de entrada' })
+    @ApiResponse({ status: 401, description: 'Unauthorized: No tiene permisos para realizar esta acción' })
+    @ApiResponse({ status: 403, description: 'Forbidden: Verifique que el token de autenticación sea válido y que no halla expirado.' })
+    @ApiResponse({ status: 404, description: 'Not Found: El código de usuario no existe' })
+    @Post('cerrar_session')
+    // Obtener el token de autenticación desde el header de la petición
+    cerrarSession(@Req() req) {
+        const token = req.headers.authorization.split(' ')[1];
+        return this.usuarioService.cerrarSession(token);
+    }
+    
 
     @Auth()
     @ApiResponse({ status: 201, description: 'Información de usuario recuperada correctamente', type: Usuario })
@@ -42,6 +65,7 @@ export class UsuarioController {
     @ApiResponse({ status: 404, description: 'Not Found: El código de usuario no existe' })
     @Get()
     recuperarInformacionDeUsuario(@Req() req) {
+        delete req.user.password;
         return req.user;
     }
 
@@ -52,10 +76,28 @@ export class UsuarioController {
     @ApiResponse({ status: 401, description: 'Unauthorized: No tiene permisos para realizar esta acción' })
     @ApiResponse({ status: 403, description: 'Forbidden: Verifique que el token de autenticación sea válido y que no halla expirado.' })
     @ApiResponse({ status: 404, description: 'Not Found: El código de usuario no existe' })
-    @Get('todos')
-    recuperarTodosLosUsuarios() {
+    @ApiQuery({ name: 'page', required: false, description: 'Número de página a recuperar' })
+    @ApiQuery({ name: 'limit', required: false, description: 'Número de registros a recuperar por página' })
+    @Get('recuperar_usuarios')
+    recuperarTodosLosUsuarios(@Query('page') page: number, @Query('limit') limit: number) {
+        if (page && limit) return this.usuarioService.recuperarTodosLosUsuarios(page, limit);
+        if (page) return this.usuarioService.recuperarTodosLosUsuarios(page);
+        if (limit) return this.usuarioService.recuperarTodosLosUsuarios(1, limit);
         return this.usuarioService.recuperarTodosLosUsuarios();
     }
+    
+    @Auth()
+    @ApiResponse({ status: 201, description: 'Datos de usuario actualizados correctamente', type: Usuario })
+    @ApiResponse({ status: 400, description: 'Bad Request: Verifique los datos de entrada' })
+    @ApiResponse({ status: 401, description: 'Unauthorized: No tiene permisos para realizar esta acción' })
+    @ApiResponse({ status: 403, description: 'Forbidden: Verifique que el token de autenticación sea válido y que no halla expirado.' })
+    @ApiResponse({ status: 404, description: 'Not Found: El código de usuario no existe' })
+    @Patch('actualizar_datos')
+    actualizarDatos(@Body() actualizarUsuarioDto: ActualizarUsuarioDto, @Req() req) {
+        return this.usuarioService.actualizarDatos(actualizarUsuarioDto, +req.user.id);
+    }
+    
+    
 
     @Auth()    
     @ApiResponse({ status: 201, description: 'Información de listado de seesiones exportada correctamentes'})
@@ -93,40 +135,9 @@ export class UsuarioController {
     }
 
 
-    @ApiResponse({ status: 201, description: 'Sesión iniciada correctamente', type: Usuario })
-    @ApiResponse({ status: 400, description: 'Bad Request: Verifique los datos de entrada' })
-    @ApiResponse({ status: 401, description: 'Unauthorized: No tiene permisos para realizar esta acción' })
-    @ApiResponse({ status: 403, description: 'Forbidden: Verifique que el token de autenticación sea válido y que no halla expirado.' })
-    @ApiResponse({ status: 404, description: 'Not Found: El código de usuario no existe' })
-    @Post('iniciar_sesion')
-    iniciarSesion(@Body() iniciarSesionDto: LoginUsuarioDto) {
-        return this.usuarioService.iniciarSesion(iniciarSesionDto);
-    }
 
-    @Auth()
-    @ApiResponse({ status: 201, description: 'Sesión cerrada correctamente', type: Usuario })
-    @ApiResponse({ status: 400, description: 'Bad Request: Verifique los datos de entrada' })
-    @ApiResponse({ status: 401, description: 'Unauthorized: No tiene permisos para realizar esta acción' })
-    @ApiResponse({ status: 403, description: 'Forbidden: Verifique que el token de autenticación sea válido y que no halla expirado.' })
-    @ApiResponse({ status: 404, description: 'Not Found: El código de usuario no existe' })
-    @Post('cerrar_sesion')
-    // Obtener el token de autenticación desde el header de la petición
-    cerrarSesion(@Req() req) {
-        console.log(req);
-        
-        const token = req.headers.authorization.split(' ')[1];
-        return this.usuarioService.cerrarSesion(token);
-    }
+    
 
-    @Auth()
-    @ApiResponse({ status: 201, description: 'Datos de usuario actualizados correctamente', type: Usuario })
-    @ApiResponse({ status: 400, description: 'Bad Request: Verifique los datos de entrada' })
-    @ApiResponse({ status: 401, description: 'Unauthorized: No tiene permisos para realizar esta acción' })
-    @ApiResponse({ status: 403, description: 'Forbidden: Verifique que el token de autenticación sea válido y que no halla expirado.' })
-    @ApiResponse({ status: 404, description: 'Not Found: El código de usuario no existe' })
-    @Put('actualizar_datos')
-    actualizarDatos(@Body() actualizarUsuarioDto: ActualizarUsuarioDto, @Req() req) {
-        return this.usuarioService.actualizarDatos(actualizarUsuarioDto, +req.user.id);
-    }
+    
 
 }

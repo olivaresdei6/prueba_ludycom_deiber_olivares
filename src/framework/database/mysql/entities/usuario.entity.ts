@@ -7,7 +7,7 @@ import {
     PrimaryGeneratedColumn
 } from "typeorm";
 import { ApiProperty } from "@nestjs/swagger";
-import { Area } from "./";
+import {Area, RegistroDeAcceso} from "./";
 
 @Entity({ name: 'usuario' })
 export class Usuario {
@@ -28,15 +28,6 @@ export class Usuario {
         unique: true,
     })
     uuid?: string;
-
-    @ApiProperty({
-        description: "Token del usuario"
-    })
-    @Column('varchar', {
-        length: 500,
-        nullable: true
-    })
-    token?: string;
 
     @ApiProperty({
         example: 'Juan',
@@ -134,5 +125,8 @@ export class Usuario {
     @ManyToOne(() => Area, areas => areas.usuarios, {nullable: true})
     @JoinColumn({name: "id_area"})
     id_area: number;
+    
+    @OneToMany(() => RegistroDeAcceso, registrosDeAccesos => registrosDeAccesos.usuario)
+    registrosDeAccesos?: RegistroDeAcceso[];
 }
 

@@ -1,79 +1,61 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
-import { IDatabaseAbstract } from '../../framework/database/mysql/core/abstract';
-import { JwtService } from '@nestjs/jwt';
-import { CrearUsuarioDto } from './dto/crear-usuario.dto';
-import { LoginUsuarioDto } from './dto/login-usuario.dto';
-import { EnvConfiguration } from '../../config/env.config';
-import { ActualizarUsuarioDto } from './dto/actualizar-usuario.dto';
-import * as excel from 'exceljs';
-import { Usuario } from '../../framework/database/mysql/entities/usuario.entity';
-import { RolesPermitidos } from './interfaces/roles-permitidos';
-import { v4 as uuidv4 } from 'uuid';
-import { ExceptionsService } from '../../config/exceptions/exceptions.service';
-import { JwtPayload } from './interfaces/jwt.payload.interface';
+import {Injectable} from '@nestjs/common';
+import {IDatabaseAbstract} from '../../framework/database/mysql/core/abstract';
+import {JwtService} from '@nestjs/jwt';
+import {CrearUsuarioDto, LoginUsuarioDto, ActualizarUsuarioDto} from './dto';
+import {Usuario} from '../../framework/database/mysql/entities';
+import {RolesPermitidos} from './interfaces/roles-permitidos';
+import {v4 as uuidv4} from 'uuid';
+import {ExceptionsService} from '../../config/exceptions/exceptions.service';
+import {JwtPayload} from './interfaces/jwt.payload.interface';
 import * as bcrypt from 'bcrypt';
+import {EnvConfiguration} from "../../config/env.config";
+import {RegistroDeAcceso} from "../../framework/database/mysql/entities";
+
 @Injectable()
 export class UsuarioService {
    
     constructor(
         private readonly baseDeDatos: IDatabaseAbstract,
         private readonly jwtService: JwtService,
-        private readonly exeptions: ExceptionsService
+        private readonly exceptions: ExceptionsService
     ) {}
 
     
-    public async registrarUsuario(usuario: CrearUsuarioDto): Promise<Object> {
+    public async registrarUsuario(usuario: CrearUsuarioDto, isAdmin:boolean = false): Promise<Object> {
         const {password, ...usuarioSinPass} = usuario;
-        // Primero se verifica si hay areas registradas
-        const password_encriptada = bcrypt.hashSync(password, 10);
-        
-        
-        const areas = await this.baseDeDatos.area.findAll();
-        if(!areas) this.exeptions.notFoundException({message: "No hay areas registradas. Por favor comuniquese con el administrador"})
-        const usuarioARegistrar = await this.baseDeDatos.usuario.create({
-            ...usuarioSinPass, 
+        if(!isAdmin){
+            // Si no es admin, se debe validar que el area exista
+            const areas = await this.baseDeDatos.area.findAll();
+            if(!areas) this.exceptions.notFoundException({message: "No hay areas registradas. Por favor comuniquese con el administrador"})
+        }
+        return await this.baseDeDatos.usuario.create({
+            ...usuarioSinPass,
             rol: RolesPermitidos.usuario_conencional,
             uuid: uuidv4(),
             estado: 1,
-            password: password_encriptada
-        })
-        return usuarioARegistrar;
-    }
-
-    public async registrarAdmin(usuario: CrearUsuarioDto): Promise<Object> {
-        const usuarioARegistrar = await this.baseDeDatos.usuario.create({
-            ...usuario, 
-            rol: RolesPermitidos.administrador,
-            uuid: uuidv4(),
-            estado: 1,
             password: bcrypt.hashSync(usuario.password, 10)
-        })
-        return usuarioARegistrar;
+        });
     }
 
 
-    public async iniciarSesion(usuario: LoginUsuarioDto){
-        console.log(usuario);
-        
-        const usuarioAIniciarSesion: Usuario = await this.baseDeDatos.usuario.findOne({where: {correo: usuario.email}}, 'Usuario');
-        console.log(usuarioAIniciarSesion);
-        
-        if(!bcrypt.compareSync(usuario.password, usuarioAIniciarSesion.password)) this.exeptions.unauthorizedException({message: 'Credenciales no validas'})
-        const token: string = this.obtenerToken({uuid: usuarioAIniciarSesion.uuid})
-        await this.baseDeDatos.usuario.update(usuarioAIniciarSesion.uuid, {token})
-        delete usuarioAIniciarSesion.password;
-        return { message: 'Sección iniciada correctamente', token, usuario: usuarioAIniciarSesion}
+    public async iniciarSession({password, correo}: LoginUsuarioDto){
+        const usuario: Usuario = await this.baseDeDatos.usuario.findOne({where: {correo}}, 'Usuario');
+        if(!bcrypt.compareSync(password, usuario.password)) this.exceptions.unauthorizedException({message: 'Credenciales no validas'})
+        const token: string = this.obtenerToken({uuid: usuario.uuid})
+        const infoToken = await this.guardarInformacionDelToken(token, +usuario.id);
+        delete usuario.password;
+        return { message: 'Sección iniciada correctamente', usuario, infoToken}
     }
 
-    public async cerrarSesion(token: string): Promise<Object> {
-        const usuario: Usuario = await this.baseDeDatos.usuario.findOne({where: {token}}, 'Usuario');
-        await this.baseDeDatos.usuario.update(usuario.id, {token: null})
+    public async cerrarSession(token: string): Promise<Object> {
+        const {id}: RegistroDeAcceso = await this.baseDeDatos.registro_de_acceso.findOne({where: {token}}, 'Registro de acceso');
+        await this.baseDeDatos.registro_de_acceso.update(+id, {fecha_salida: new Date()});
         return { message: 'Sección cerrada correctamente', token}
         
     }
 
-    recuperarTodosLosUsuarios() {
-        return this.baseDeDatos.usuario.findAll();
+    recuperarTodosLosUsuarios(page = 1, limit = 10) {
+        return this.baseDeDatos.usuario.searchPaginatedCondition(page, limit, {});
     }
 
 
@@ -146,13 +128,32 @@ export class UsuarioService {
 
 
     actualizarDatos(crearUsuarioDto: ActualizarUsuarioDto, id: number) {
+        const {password} = crearUsuarioDto;
+        if(password) crearUsuarioDto.password = bcrypt.hashSync(password, 10);
         return this.baseDeDatos.usuario.update(+id, crearUsuarioDto);
     }
 
     private obtenerToken(payload: JwtPayload) : string {
-        console.log(payload);
-        
         return this.jwtService.sign(payload, {algorithm: 'HS512'});
     }
+    
+    private async obtenerInformacionDelToken(token: string) {
+        const { exp, uuid } = this.jwtService.verify(token, {secret: EnvConfiguration().jwtSecret});
+        return { exp, uuid };
+    }
+    
+    private async guardarInformacionDelToken(token: string, id: number ) {
+        const { exp } = await this.obtenerInformacionDelToken(token);
+        
+        return await this.baseDeDatos.registro_de_acceso.create({
+            fecha_ingreso: ((new Date())),
+            fecha_expiracion: ((new Date(exp * 1000))),
+            token,
+            usuario: id
+        });
+        
+    }
+    
+    
 
 }

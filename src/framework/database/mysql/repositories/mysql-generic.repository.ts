@@ -26,7 +26,6 @@ export class MySQLGenericRepository<T> implements IGenericRepository<T> {
              * Se crea una nueva instancia de la entidad que se recibe como parámetro.
              * */
             const entityInstance: T = this._repository.create(entity);
-            console.log('Se creó la instancia de la entidad: ', entityInstance);
             /**
              * Se guarda la nueva instancia de la entidad en la base de datos.
              */
@@ -88,7 +87,7 @@ export class MySQLGenericRepository<T> implements IGenericRepository<T> {
         }
     }
     
-    async searchPaginatedCondition(limit: number, page: number, where: FindOptionsWhere<T> | FindOptionsWhere<T>[]): Promise<[T[], number]> {
+    async searchPaginatedCondition(page: number, limit: number, where: FindOptionsWhere<T> | FindOptionsWhere<T>[]): Promise<[[T[], number], { countFieldsTotal: number; limit: number; page: number }]> {
         const queryBuilder = this._repository.createQueryBuilder();
         /**
          * queryBuilder.where() es el método que se utiliza para agregar condiciones a la consulta.
@@ -96,9 +95,10 @@ export class MySQLGenericRepository<T> implements IGenericRepository<T> {
          * El error se debe a que el tipo de la variable where no es compatible con el tipo de la variable where de
          * queryBuilder.where().
          */
-        if (!page) page = 1;
-        if (!limit) limit = 1000000;
-        if (page > Math.ceil((await this._repository.count({ where })) / limit)) page = Math.ceil((await this._repository.count({ where })) / limit);
+        const countFieldsTotal = (await this._repository.count({ where }));
+        this.validatePageAndLimit(page, limit, countFieldsTotal);
+        const mathCeil = Math.ceil((countFieldsTotal) / limit);
+        if (page > mathCeil) page = mathCeil;
         queryBuilder.where(where as any);
         queryBuilder.skip((page - 1) * limit);
         queryBuilder.take(limit);
@@ -108,7 +108,9 @@ export class MySQLGenericRepository<T> implements IGenericRepository<T> {
          * número total de registros. Este método retorna un arreglo de dos elementos, el primero es el número total de
          * registros y el segundo es el arreglo de registros de la página actual.
          */
-        return await queryBuilder.getManyAndCount();
+        
+        const result = await queryBuilder.getManyAndCount();
+        return [result, {limit, page, countFieldsTotal}];
     }
     
     
@@ -168,6 +170,10 @@ export class MySQLGenericRepository<T> implements IGenericRepository<T> {
             entityInstance = await this._repository.preload({id: record.id, ...entity});
         }else{
             entityInstance = await this._repository.preload({ id, ...entity});
+            if (!entityInstance) {
+                const id_str = id.toString();
+                entityInstance = await this._repository.preload({ id: id_str, ...entity});
+            }
         }
         /**
          * Si no se encuentra la acción de permiso, se lanza una excepción.
@@ -233,7 +239,7 @@ export class MySQLGenericRepository<T> implements IGenericRepository<T> {
             this.exceptions.notFoundException({message: 'No se encontraron registros.'});
         }
         if (page > total){
-            this.exceptions.badRequestException({message: 'El número de página es mayor al número de páginas'});
+            this.exceptions.badRequestException({message: 'La página solicitada no existe.'});
         }
         
         if (page <= 0 || limit <= 0) {

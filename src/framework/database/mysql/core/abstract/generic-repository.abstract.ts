@@ -7,7 +7,7 @@ export abstract class IGenericRepository<T> {
     
     public abstract findOne(options: FindOneOptions<T>, entity: string, ignoreAuth?:boolean): Promise<T | null>;
     
-    public abstract searchPaginatedCondition(page: number, limit: number, where: FindOptionsWhere<T> | FindOptionsWhere<T>[]): Promise<[T[], number]>;
+    public abstract searchPaginatedCondition(page: number, limit: number, where: FindOptionsWhere<T> | FindOptionsWhere<T>[]): Promise<[[T[], number], { countFieldsTotal: number; limit: number; page: number }]>;
     
     public abstract findBy(where: FindOptionsWhere<T> | FindOptionsWhere<T>[], options?: FindOneOptions<T>): Promise<T[]>;
     
