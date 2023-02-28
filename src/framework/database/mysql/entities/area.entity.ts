@@ -25,6 +25,7 @@ export class Area {
     @Column('varchar', {
         nullable: false,
         length: 50,
+        unique: true,
     })
     nombre!: string;
 
@@ -61,10 +62,10 @@ export class Area {
     estado?: number;
 
 
-    @OneToMany(() => Usuario, usuario => usuario.id_area)
+    @OneToMany(() => Usuario, usuario => usuario.area)
     usuarios?: Usuario[];
 
-    @ManyToOne(() => Usuario, usuarioArea => usuarioArea.areas)
+    @ManyToOne(() => Usuario, usuarioArea => usuarioArea.areas, {eager: true})
     @JoinColumn({name: "id_lider"})
-    id_lider: number;
+    lider:Usuario | number;
 }

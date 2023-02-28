@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsDateString, IsEmail, IsNotEmpty, IsNumber, IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import {IsDecimal, IsEmail, IsNotEmpty, IsNumber, IsOptional, IsString, MinLength} from 'class-validator';
 
 
 export class CrearUsuarioDto {
@@ -23,6 +23,26 @@ export class CrearUsuarioDto {
     @IsNotEmpty({ message: 'El apellido no puede estar vacío' })
     @MinLength(3, { message: 'El apellido debe tener al menos 3 caracteres' })
     apellido: string;
+    
+    @ApiProperty({
+        description: 'Cédula del usuario',
+        example: '100955357',
+        required: false,
+    })
+    @IsOptional()
+    @IsString({ message: 'El número de documento debe ser una cadena de texto' })
+    @MinLength(3, { message: 'El número de documento debe tener al menos 3 caracteres' })
+    nro_de_documento?: string;
+    
+    @ApiProperty({
+        description: 'Salario del usuario',
+        example: '250.000',
+        required: false,
+    })
+    @IsOptional()
+    @IsDecimal({locale: 'es-ES'}, { message: 'El salario debe ser un número decimal' })
+    @MinLength(3, { message: 'El salario debe tener al menos 3 caracteres' })
+    salario?: number;
 
     @ApiProperty({
         example: '2001-12-11',
@@ -52,5 +72,16 @@ export class CrearUsuarioDto {
     @IsNotEmpty({ message: 'La contraseña no puede estar vacía' })
     @MinLength(6, { message: 'La contraseña debe tener al menos 6 caracteres' })
     password: string;
+    
+    @ApiProperty({
+        description: 'Id del area',
+        example: 1,
+        required: false,
+    })
+    @IsOptional()
+    @IsNumber({}, { message: 'El id del area debe ser un número' })
+    id_area?: number;
+    
+    
 
 }

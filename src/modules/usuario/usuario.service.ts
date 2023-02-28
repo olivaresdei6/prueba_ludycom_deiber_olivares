@@ -10,6 +10,7 @@ import {JwtPayload} from './interfaces/jwt.payload.interface';
 import * as bcrypt from 'bcrypt';
 import {EnvConfiguration} from "../../config/env.config";
 import {RegistroDeAcceso} from "../../framework/database/mysql/entities";
+import * as excel from 'exceljs';
 
 @Injectable()
 export class UsuarioService {
@@ -28,13 +29,22 @@ export class UsuarioService {
             const areas = await this.baseDeDatos.area.findAll();
             if(!areas) this.exceptions.notFoundException({message: "No hay areas registradas. Por favor comuniquese con el administrador"})
         }
-        return await this.baseDeDatos.usuario.create({
+        const usuario_insertado = await this.baseDeDatos.usuario.create({
             ...usuarioSinPass,
-            rol: RolesPermitidos.usuario_conencional,
+            rol: isAdmin ? RolesPermitidos.administrador : RolesPermitidos.usuario_conencional,
             uuid: uuidv4(),
             estado: 1,
-            password: bcrypt.hashSync(usuario.password, 10)
+            password: bcrypt.hashSync(usuario.password, 10),
+            area: usuario.id_area
         });
+        delete usuario_insertado.password;
+        return {
+            message: 'Usuario registrado correctamente',
+            usuario: {
+                ...usuario_insertado,
+                area: usuario.id_area
+            }
+        }
     }
 
 
@@ -54,43 +64,83 @@ export class UsuarioService {
         
     }
 
-    recuperarTodosLosUsuarios(page = 1, limit = 10) {
-        return this.baseDeDatos.usuario.searchPaginatedCondition(page, limit, {});
+    async recuperarTodosLosUsuarios(page = 1, limit = 10) {
+        const usuarios = (await this.baseDeDatos.usuario.searchPaginatedCondition(page, limit, {estado: 1}))[0][0];
+        let usuariosFormateados = [];
+        for (let usuario of usuarios) {
+            delete usuario.password;
+            const {area} = usuario;
+            const area_del_usuario = await this.baseDeDatos.area.findOne({where: {id: area}}, 'Area');
+            // @ts-ignore
+            delete area_del_usuario.lider.password;
+            usuariosFormateados.push({
+                ...usuario,
+                area: area_del_usuario
+            })
+        }
+        return usuariosFormateados;
+    }
+    
+    eliminarUsuario(id: number) {
+        return this.baseDeDatos.usuario.update(id, {estado: 0});
     }
 
 
 
-    async exportarSesiones(id_usuario: number) {
-        const user: Usuario = await this.baseDeDatos.usuario.findOne({ where: { id: id_usuario } }, 'Usuario');
-        const usuarios = (await this.baseDeDatos.usuario.executeQuery(`
-            SELECT u.nombres, u.apellidos, u.correo, u.estado, u,rol, a.nombre as area from usuario
-            join area on area.id = usuario.id_area
-        `))[0];
-        /*const workbook = new excel.Workbook();
+    async exportarUsuarios() {
+        const usuarios = await this.baseDeDatos.usuario.findAll();
+        let usuariosFormateados = [];
+        for (let usuario of usuarios) {
+            delete usuario.password;
+            const {area} = usuario;
+            const area_del_usuario = await this.baseDeDatos.area.findOne({where: {id: area}}, 'Area');
+            // @ts-ignore
+            delete area_del_usuario.lider.password;
+            usuariosFormateados.push({
+                id: usuario.id,
+                nombres: usuario.nombre,
+                apellidos: usuario.apellido,
+                correo: usuario.correo,
+                nro_de_documento: usuario.nro_de_documento || 'No especificado',
+                salario: usuario.salario || 'No especificado',
+                estado: usuario.estado === 1 ? 'Activo' : 'Inactivo',
+                area: area_del_usuario.nombre,
+                // @ts-ignore
+                lider_de_area: `${area_del_usuario.lider.nombre} ${area_del_usuario.lider.apellido}`,
+                rol: usuario.rol === RolesPermitidos.administrador ? 'Administrador' : 'Usuario'
+            })
+        }
+        console.log(usuariosFormateados);
+        const workbook = new excel.Workbook();
         const worksheet = workbook.addWorksheet('Sesiones');
         worksheet.columns = [
             { header: 'ID', key: 'id', width: 10 },
-            { header: 'Nombre', key: 'nombre', width: 30 },
-            { header: 'Apellido', key: 'apellido', width: 30 },
+            { header: 'Nombres', key: 'nombres', width: 30 },
+            { header: 'Apellidos', key: 'apellidos', width: 30 },
             { header: 'Correo', key: 'correo', width: 30 },
-            { header: 'Area', key: 'correo', width: 30 },
-            { header: 'Persona Encargada del area', key: 'correo', width: 30 },
+            { header: 'N° de Documento', key: 'nro_de_documento', width: 30 },
+            { header: 'Salario', key: 'salario', width: 30 },
+            { header: 'Area de trabajo', key: 'area', width: 30 },
+            { header: 'Lider Encargado del area', key: 'lider_de_area', width: 30 },
+            { header: 'Rol', key: 'rol', width: 30 },
+            { header: 'Estado', key: 'estado', width: 30 },
         ];
-
-        usuarios.forEach((sesion) => {
+        usuariosFormateados.forEach((usuario) => {
             worksheet.addRow({
-                id: sesion.id,
-                nombre: user.nombre,
-                apellido: user.apellido,
-                correo: user.correo,
-                fecha_ingreso: sesion.fecha_ingreso,
-                fecha_expiracion: sesion.fecha_expiracion,
-                ip: sesion.ip
+                id: usuario.id,
+                nombres: usuario.nombres,
+                apellidos: usuario.apellidos,
+                correo: usuario.correo,
+                nro_de_documento: usuario.nro_de_documento,
+                salario: usuario.salario,
+                area: usuario.area,
+                lider_de_area: usuario.lider_de_area,
+                rol: usuario.rol,
+                estado: usuario.estado
             });
         });
 
         return workbook;
-        */
 
     }
 

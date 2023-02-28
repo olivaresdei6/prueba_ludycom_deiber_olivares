@@ -48,6 +48,27 @@ export class Usuario {
         length: 50,
     })
     apellido!: string;
+    
+    @ApiProperty({
+        example: '100955357',
+        description: 'Cédula del usuario',
+    })
+    @Column('varchar', {
+        nullable: true,
+        length: 50,
+    })
+    nro_de_documento?: string;
+    
+    @ApiProperty({
+        example: '250.000',
+        description: 'Salario del usuario',
+    })
+    @Column('decimal', {
+        nullable: true,
+        precision: 10,
+        scale: 2,
+    })
+    salario?: number;
 
 
     @ApiProperty({
@@ -119,12 +140,12 @@ export class Usuario {
     })
     estado?: number;
 
-    @OneToMany(() => Area, area => area.id_lider)
+    @OneToMany(() => Area, area => area.lider)
     areas?: Area[];
 
     @ManyToOne(() => Area, areas => areas.usuarios, {nullable: true})
     @JoinColumn({name: "id_area"})
-    id_area: number;
+    area: number;
     
     @OneToMany(() => RegistroDeAcceso, registrosDeAccesos => registrosDeAccesos.usuario)
     registrosDeAccesos?: RegistroDeAcceso[];

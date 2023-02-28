@@ -1,5 +1,5 @@
 import { CrearUsuarioDto, LoginUsuarioDto, ActualizarUsuarioDto } from './dto';
-import {Controller, Post, Body, Query, Get, Put, Req, Res, Patch} from '@nestjs/common';
+import {Controller, Post, Body, Query, Get, Req, Res, Patch, BadRequestException} from '@nestjs/common';
 import { ApiTags, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { UsuarioService } from './usuario.service';
 import { Usuario } from "../../framework/database/mysql/entities";
@@ -19,6 +19,10 @@ export class UsuarioController {
     @ApiResponse({ status: 404, description: 'Not Found: El código de usuario no existe' })
     @Post()
     registrarUsuario(@Body() crearUsuarioDto: CrearUsuarioDto) {
+        console.log(crearUsuarioDto)
+        if (!crearUsuarioDto.id_area || !crearUsuarioDto.nro_de_documento || !crearUsuarioDto.salario) {
+            throw new BadRequestException('Los campos id_area, nro_de_documento y salario son obligatorios para usuarios comunes');
+        }
         return this.usuarioService.registrarUsuario(crearUsuarioDto);
     }
     
@@ -97,43 +101,34 @@ export class UsuarioController {
         return this.usuarioService.actualizarDatos(actualizarUsuarioDto, +req.user.id);
     }
     
+    @Auth()
+    @ApiResponse({ status: 201, description: 'Usuario eliminado correctamente', type: Usuario })
+    @ApiResponse({ status: 400, description: 'Bad Request: Verifique los datos de entrada' })
+    @ApiResponse({ status: 401, description: 'Unauthorized: No tiene permisos para realizar esta acción' })
+    @ApiResponse({ status: 403, description: 'Forbidden: Verifique que el token de autenticación sea válido y que no halla expirado.' })
+    @ApiResponse({ status: 404, description: 'Not Found: El código de usuario no existe' })
+    @Patch('eliminar_usuario')
+    eliminarUsuario(@Req() req) {
+        return this.usuarioService.eliminarUsuario(+req.user.id);
+    }
+    
     
 
-    @Auth()    
     @ApiResponse({ status: 201, description: 'Información de listado de seesiones exportada correctamentes'})
     @ApiResponse({ status: 400, description: 'Bad Request: Verifique los datos de entrada' })
     @ApiResponse({ status: 401, description: 'Unauthorized: No tiene permisos para realizar esta acción' })
     @ApiResponse({ status: 403, description: 'Forbidden: Verifique que el token de autenticación sea válido y que no halla expirado.' })
     @ApiResponse({ status: 404, description: 'Not Found: El código de usuario no existe' })
-    @Get('exportar_sesiones')
+    @Get('exportar_datos')
     async exportarSesiones(@Req() req, @Res() res) {
-        const sesiones = await this.usuarioService.exportarSesiones(req.user);
+        const sesiones = await this.usuarioService.exportarUsuarios()
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader("Content-Disposition", "attachment; filename=" + "sesiones.xlsx");
+        res.setHeader("Content-Disposition", "attachment; filename=" + "datos de los usuarios.xlsx");
         //@ts-ignore
         return sesiones.xlsx.write(res).then(() => {
             res.end();
           });
     }
-
-
-    @Auth(RolesPermitidos.administrador)
-    @ApiResponse({ status: 201, description: 'Exportar sesiones de los usuarios'})
-    @ApiResponse({ status: 400, description: 'Bad Request: Verifique los datos de entrada' })
-    @ApiResponse({ status: 401, description: 'Unauthorized: No tiene permisos para realizar esta acción' })
-    @ApiResponse({ status: 403, description: 'Forbidden: Verifique que el token de autenticación sea válido y que no halla expirado.' })
-    @ApiResponse({ status: 404, description: 'Not Found: El código de usuario no existe' })
-    @Get('exportar_sesiones_todos')
-    async exportarSesionesTodos(@Res() res) {
-        const sesiones = await this.usuarioService.exportarSesionesTodos();
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader("Content-Disposition", "attachment; filename=" + "sesiones de todos los usuarios.xlsx");
-        //@ts-ignore
-        return sesiones.xlsx.write(res).then(() => {
-            res.end();
-        });
-    }
-
 
 
     
